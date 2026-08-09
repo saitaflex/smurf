@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
+/* ── Design tokens: "audit-grade escrow ledger" ─────────────────────────────
+   Paper-warm ground, ink-navy text, cobalt actions. Emerald / amber / crimson
+   are reserved for money & verdict states only — never decoration. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #fafaf8;
+  --surface: #ffffff;
+  --ink: #14171f;
+  --ink-muted: #5c6470;
+  --line: #e4e4de;
+  --cobalt: #175cd3;
+  --cobalt-deep: #1046a3;
+  --emerald: #067647;
+  --emerald-tint: #e6f4ee;
+  --amber: #b54708;
+  --amber-tint: #fdf3e7;
+  --crimson: #b42318;
+  --crimson-tint: #fbeae9;
+  --neutral-tint: #f0f0ec;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-cobalt: var(--cobalt);
+  --color-cobalt-deep: var(--cobalt-deep);
+  --color-emerald: var(--emerald);
+  --color-emerald-tint: var(--emerald-tint);
+  --color-amber: var(--amber);
+  --color-amber-tint: var(--amber-tint);
+  --color-crimson: var(--crimson);
+  --color-crimson-tint: var(--crimson-tint);
+  --color-neutral-tint: var(--neutral-tint);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-instrument-serif);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* Ledger voice: statuses, amounts, ids, timestamps all speak in mono. */
+.ledger {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Panel: the workspace's stacked receipt sections. */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Hairline dotted leader, like an invoice line. */
+.leader {
+  flex: 1;
+  border-bottom: 1px dotted var(--line);
+  margin: 0 0.5rem;
+  transform: translateY(-0.2em);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--cobalt);
+  outline-offset: 2px;
 }
