@@ -1,9 +1,12 @@
 // Deal state machine — shared transition table + guards.
-// NOTE (team): Task-2 owner defines the canonical version of this file per the
-// role split. This is a minimal implementation to unblock the thin API routes;
-// extend here (don't fork) so every route keeps importing the same guards.
+// Canonical file per the team role split: every route imports the same guards;
+// extend here, don't fork.
 
-import type { ProjectStatus } from "./supabase/types";
+import type { PaymentStatus, ProjectStatus } from "./supabase/types";
+
+// Re-exported so payment/polling modules can import status types from here
+// alongside the guards (types themselves live in supabase/types.ts).
+export type { PaymentStatus, ProjectStatus };
 
 // project_status transitions, keyed by action. payment_status is tracked
 // independently and never inferred from these — see the plan doc.
@@ -51,4 +54,29 @@ export class InvalidTransitionError extends Error {
 export function assertTransition(action: DealAction, current: ProjectStatus): ProjectStatus {
   if (!canTransition(action, current)) throw new InvalidTransitionError(action, current);
   return nextStatus(action);
+}
+
+// payment_status machine — separate from project_status by design ("DB says
+// paid, Gravv says otherwise" is a real bug class; never infer one from the
+// other). Used by the payments/polling routes.
+const PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
+  not_created: ["pending", "failed"],
+  pending: ["locked", "failed"],
+  locked: ["release_pending", "refund_pending"],
+  release_pending: ["released", "failed", "unknown"],
+  released: [],
+  refund_pending: ["refunded", "failed", "unknown"],
+  refunded: [],
+  failed: ["pending", "release_pending", "refund_pending"], // allow retry after failure
+  unknown: ["released", "refunded", "failed"], // resolved by admin resync
+};
+
+export function canTransitionPayment(from: PaymentStatus, to: PaymentStatus): boolean {
+  return PAYMENT_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+export function assertPaymentTransition(from: PaymentStatus, to: PaymentStatus): void {
+  if (!canTransitionPayment(from, to)) {
+    throw new Error(`Invalid payment_status transition: ${from} -> ${to}`);
+  }
 }

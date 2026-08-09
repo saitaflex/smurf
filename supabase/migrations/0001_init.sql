@@ -105,16 +105,9 @@ create table audit_events (
   created_at timestamptz not null default now()
 );
 
-create table gravv_webhook_events (
-  id uuid primary key default gen_random_uuid(),
-  gravv_event_id text not null unique,
-  event_type text not null,
-  event_category text not null,
-  deal_id uuid references deals(id),
-  raw_payload jsonb not null,
-  processed_at timestamptz,
-  created_at timestamptz not null default now()
-);
+-- No webhook event table: there is no inbound receiver in this build. All Gravv
+-- state (KYC, funding, transfers) is polled on demand via the matching GET tool
+-- rather than pushed, so there is nothing to dedupe or log here.
 
 create or replace function set_updated_at()
 returns trigger as $$
@@ -137,7 +130,6 @@ alter table verification_runs enable row level security;
 alter table verification_results enable row level security;
 alter table client_reviews enable row level security;
 alter table audit_events enable row level security;
-alter table gravv_webhook_events enable row level security;
 
 create or replace function is_admin()
 returns boolean as $$
@@ -207,9 +199,6 @@ create policy audit_events_party_or_admin on audit_events
         and (d.client_id = auth.uid() or d.freelancer_id = auth.uid() or is_admin())
     )
   );
-
-create policy gravv_webhook_events_admin_only on gravv_webhook_events
-  for select using (is_admin());
 
 -- All writes to business tables go through API routes using the service-role key,
 -- which bypasses RLS -- no client-side insert/update/delete policies are defined here

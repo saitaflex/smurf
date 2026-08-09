@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // User-scoped server client: reads the session cookie, RLS-enforced.
 // Use in server components and to identify the caller in API routes.
@@ -37,6 +37,22 @@ export function createServiceClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
   );
+}
+
+// Cached variant of the service-role client used by the payments/polling
+// routes — same trust model as createServiceClient, one instance per process.
+let cachedAdmin: SupabaseClient | null = null;
+export function supabaseAdmin(): SupabaseClient {
+  if (cachedAdmin) return cachedAdmin;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  }
+  cachedAdmin = createSupabaseClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return cachedAdmin;
 }
 
 // Resolve the calling user's profile (id + role) or null if not signed in.
