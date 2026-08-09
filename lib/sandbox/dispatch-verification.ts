@@ -16,6 +16,7 @@
 // `vercel env pull`) or VERCEL_TOKEN + VERCEL_TEAM_ID + VERCEL_PROJECT_ID.
 
 import { Sandbox } from '@vercel/sandbox';
+import { spawn } from 'child_process';
 import { readdir, readFile } from 'fs/promises';
 import path from 'path';
 
@@ -59,16 +60,49 @@ async function collectAgentFiles(): Promise<{ dirs: string[]; files: SandboxFile
   return { dirs, files };
 }
 
+function runEnv(args: DispatchArgs): Record<string, string> {
+  return {
+    RUN_ID: args.runId,
+    DEAL_ID: args.dealId,
+    AGENT_CALLBACK_SECRET: process.env.AGENT_CALLBACK_SECRET ?? '',
+    SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    GROQ_API_KEY: process.env.GROQ_API_KEY ?? '',
+    VERIFY_CALLBACK_URL: process.env.VERIFY_CALLBACK_URL ?? '',
+  };
+}
+
 export async function dispatchVerification(args: DispatchArgs): Promise<DispatchResult> {
+  // Dev mode (SANDBOX_LOCAL=1): run the orchestrator as a local python
+  // process instead of a Vercel sandbox, so the whole verification loop works
+  // on one laptop with no Vercel credentials. Requires
+  // `pip install -r agent/requirements.txt` locally.
+  if (process.env.SANDBOX_LOCAL === '1') {
+    const python = process.env.PYTHON_BIN ?? 'python';
+    const proc = spawn(python, ['-m', 'agent.orchestrator'], {
+      cwd: process.cwd(),
+      env: { ...process.env, ...runEnv(args) },
+      detached: true,
+      stdio: 'ignore',
+    });
+    proc.unref();
+    return { sandboxId: `local-${proc.pid}` };
+  }
+
   const snapshotId = process.env.AGENT_BROWSER_SNAPSHOT_ID;
 
   // Default image (vercel/sandbox/universal) already ships Python; one-shot
   // runs don't need auto-persistence snapshots on stop.
-  const sandbox = await Sandbox.create({
-    ...(snapshotId ? { source: { type: 'snapshot' as const, snapshotId } } : {}),
-    timeout: RUN_TIMEOUT_MS,
-    persistent: false,
-  });
+  const sandbox = snapshotId
+    ? await Sandbox.create({
+        source: { type: 'snapshot', snapshotId },
+        timeout: RUN_TIMEOUT_MS,
+        persistent: false,
+      })
+    : await Sandbox.create({
+        timeout: RUN_TIMEOUT_MS,
+        persistent: false,
+      });
 
   try {
     const { dirs, files } = await collectAgentFiles();
@@ -88,15 +122,7 @@ export async function dispatchVerification(args: DispatchArgs): Promise<Dispatch
       cmd: 'bash',
       args: ['-lc', `${setup}python -m agent.orchestrator`],
       detached: true,
-      env: {
-        RUN_ID: args.runId,
-        DEAL_ID: args.dealId,
-        AGENT_CALLBACK_SECRET: process.env.AGENT_CALLBACK_SECRET ?? '',
-        SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-        GROQ_API_KEY: process.env.GROQ_API_KEY ?? '',
-        VERIFY_CALLBACK_URL: process.env.VERIFY_CALLBACK_URL ?? '',
-      },
+      env: runEnv(args),
     });
 
     return { sandboxId: sandbox.name };

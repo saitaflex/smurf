@@ -48,7 +48,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     return apiError(400, "VALIDATION", "Deliverable URL must be http(s).");
   }
-  if (BLOCKED_HOST.test(url.hostname)) {
+  // ALLOW_LOCAL_DELIVERABLES=1 (dev only) lets the whole loop run on one
+  // laptop — SANDBOX_LOCAL orchestrator verifying a localhost deliverable.
+  // Never set it in production: the guard exists to stop SSRF via verifiers.
+  if (process.env.ALLOW_LOCAL_DELIVERABLES !== "1" && BLOCKED_HOST.test(url.hostname)) {
     return apiError(400, "VALIDATION", "Deliverable URL must be publicly reachable.");
   }
 
