@@ -1,9 +1,15 @@
-// Deal state machine — shared transition table + guards.
-// NOTE (team): Task-2 owner defines the canonical version of this file per the
-// role split. This is a minimal implementation to unblock the thin API routes;
-// extend here (don't fork) so every route keeps importing the same guards.
+// Deal state machine — shared transition table + guards (canonical, Task 2).
+// Two complementary APIs, one file (extend here, don't fork):
+//  - action-keyed transitions (assertTransition) for the thin API routes
+//  - status guards (canStartVerification/canRelease/canRefund/canDeliver) for
+//    the verification + payments flows
+// Enums live in ./supabase/types and mirror supabase/migrations/0001_init.sql.
+//
+// Every UPDATE that applies a transition should still be filtered on the
+// expected current status (.eq('project_status', current)) so concurrent
+// requests can't double-fire it.
 
-import type { ProjectStatus } from "./supabase/types";
+import type { PaymentStatus, ProjectStatus } from "./supabase/types";
 
 // project_status transitions, keyed by action. payment_status is tracked
 // independently and never inferred from these — see the plan doc.
@@ -15,6 +21,7 @@ const TRANSITIONS: Record<string, { from: ProjectStatus[]; to: ProjectStatus }> 
   deliver: { from: ["funded", "revision_requested"], to: "submitted" },
   start_verification: { from: ["submitted"], to: "verifying" },
   verification_complete: { from: ["verifying"], to: "awaiting_client_review" },
+  verification_errored: { from: ["verifying"], to: "submitted" }, // run crashed/timed out -> retryable
   approve: { from: ["awaiting_client_review"], to: "approved" },
   request_revision: { from: ["awaiting_client_review"], to: "revision_requested" },
   dispute: { from: ["awaiting_client_review"], to: "disputed" },
@@ -51,4 +58,53 @@ export class InvalidTransitionError extends Error {
 export function assertTransition(action: DealAction, current: ProjectStatus): ProjectStatus {
   if (!canTransition(action, current)) throw new InvalidTransitionError(action, current);
   return nextStatus(action);
+}
+
+// ---------------------------------------------------------------------------
+// Status guards: transitions that also depend on payment_status. Used by the
+// verification and payments flows, where "the project status allows it" isn't
+// sufficient on its own.
+
+export interface DealStatusFields {
+  project_status: ProjectStatus;
+  payment_status: PaymentStatus;
+}
+
+type GuardResult = { ok: true } | { ok: false; reason: string };
+
+export function canStartVerification(deal: DealStatusFields): GuardResult {
+  if (!canTransition("start_verification", deal.project_status)) {
+    return { ok: false, reason: `deal is '${deal.project_status}', verification requires 'submitted'` };
+  }
+  if (deal.payment_status !== "locked") {
+    return { ok: false, reason: `escrow is '${deal.payment_status}', verification requires 'locked'` };
+  }
+  return { ok: true };
+}
+
+export function canRelease(deal: DealStatusFields): GuardResult {
+  if (deal.project_status !== "approved") {
+    return { ok: false, reason: `release requires 'approved', deal is '${deal.project_status}'` };
+  }
+  if (deal.payment_status !== "locked") {
+    return { ok: false, reason: `release requires escrow 'locked', payment is '${deal.payment_status}'` };
+  }
+  return { ok: true };
+}
+
+export function canRefund(deal: DealStatusFields): GuardResult {
+  if (deal.project_status !== "declined") {
+    return { ok: false, reason: `refund requires 'declined', deal is '${deal.project_status}'` };
+  }
+  if (deal.payment_status !== "locked") {
+    return { ok: false, reason: `refund requires escrow 'locked', payment is '${deal.payment_status}'` };
+  }
+  return { ok: true };
+}
+
+export function canDeliver(deal: DealStatusFields): GuardResult {
+  if (!canTransition("deliver", deal.project_status)) {
+    return { ok: false, reason: `delivery requires 'funded' or 'revision_requested', deal is '${deal.project_status}'` };
+  }
+  return { ok: true };
 }
