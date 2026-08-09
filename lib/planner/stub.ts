@@ -26,20 +26,26 @@ function splitRequirements(raw: string): string[] {
     .filter((s) => s.length > 8);
 }
 
+// Item types and required params here MUST match agent/schemas.py's ItemType
+// enum and REQUIRED_PARAMS exactly — that file is the source of truth (the
+// orchestrator constructs ChecklistItem.from_db_row() straight from what this
+// stub writes to the assertion jsonb column, and rejects anything else).
 function assertionFor(text: string, type: DeliverableType, hintUrl?: string | null): Record<string, unknown> {
   const urlMatch = text.match(/https?:\/\/\S+/)?.[0] ?? hintUrl ?? null;
   if (type === "backend") {
     const pathMatch = text.match(/(\/[a-z0-9_\-/{}:]+)/i)?.[0] ?? "/";
     const statusMatch = text.match(/\b(200|201|204|301|302|400|401|403|404)\b/)?.[0];
+    // ItemType.HTTP_STATUS — required: path, expected_status
     return {
-      type: "http_check",
-      url: urlMatch,
+      type: "http_status",
       path: pathMatch,
       expected_status: statusMatch ? Number(statusMatch) : 200,
+      url: urlMatch,
       description: text,
     };
   }
   if (type === "image") {
+    // ItemType.VISION_PROMPT — required: prompt
     return {
       type: "vision_prompt",
       // Framed as "does the image depict X" — vision verdicts are advisory
@@ -50,13 +56,13 @@ function assertionFor(text: string, type: DeliverableType, hintUrl?: string | nu
     };
   }
   const quoted = text.match(/"([^"]+)"|'([^']+)'|`([^`]+)`/);
-  return {
-    type: quoted ? "text_present" : "page_check",
-    url: urlMatch,
-    expected_text: quoted ? (quoted[1] ?? quoted[2] ?? quoted[3]) : undefined,
-    check_console_errors: true,
-    description: text,
-  };
+  const quotedText = quoted ? quoted[1] ?? quoted[2] ?? quoted[3] : undefined;
+  if (quotedText) {
+    // ItemType.TEXT_PRESENT — required: text
+    return { type: "text_present", text: quotedText, path: urlMatch, description: text };
+  }
+  // ItemType.PAGE_LOADS — required: none
+  return { type: "page_loads", path: urlMatch, description: text };
 }
 
 export function stubPlan(

@@ -105,7 +105,7 @@ export default async function DealWorkspace({
       </div>
 
       <div className="grid lg:grid-cols-[280px_1fr] gap-6 items-start">
-        <EscrowRail deal={deal} />
+        <EscrowRail deal={deal} isClient={isClient} isFreelancer={isFreelancer} />
 
         <div className="space-y-6 min-w-0">
           {showDecision && <DecisionBar dealId={deal.id} />}

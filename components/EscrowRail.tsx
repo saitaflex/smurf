@@ -1,4 +1,6 @@
 import { StatusChip } from "./StatusChip";
+import { FundEscrowButton } from "./FundEscrowButton";
+import { StartKycButton } from "./StartKycButton";
 import { PAYMENT_STATUS, PROJECT_STATUS } from "@/lib/status";
 import type { Deal } from "@/lib/supabase/types";
 
@@ -15,9 +17,19 @@ const STAGES: { key: string; label: string; statuses: string[] }[] = [
   { key: "settled", label: "Settled", statuses: ["approved", "declined", "cancelled"] },
 ];
 
-export function EscrowRail({ deal }: { deal: Deal }) {
+export function EscrowRail({
+  deal,
+  isClient = false,
+  isFreelancer = false,
+}: {
+  deal: Deal;
+  isClient?: boolean;
+  isFreelancer?: boolean;
+}) {
   const currentIdx = STAGES.findIndex((s) => s.statuses.includes(deal.project_status));
   const pay = PAYMENT_STATUS[deal.payment_status];
+  const canFund = isClient && deal.project_status === "awaiting_funding" && !deal.gravv_collection_id;
+  const canStartKyc = (isClient || isFreelancer) && deal.project_status === "agreed";
 
   return (
     <aside className="panel px-5 py-5 h-fit lg:sticky lg:top-6">
@@ -51,6 +63,7 @@ export function EscrowRail({ deal }: { deal: Deal }) {
               {current && (
                 <div className="mt-1.5">
                   <StatusChip {...PROJECT_STATUS[deal.project_status]} />
+                  {stage.key === "contract" && canStartKyc && <StartKycButton dealId={deal.id} />}
                 </div>
               )}
             </li>
@@ -70,6 +83,7 @@ export function EscrowRail({ deal }: { deal: Deal }) {
           <StatusChip label={pay.label} tone={pay.tone} />
         </div>
         <p className="text-xs text-ink-muted mt-2 leading-relaxed">{pay.note}</p>
+        {canFund && <FundEscrowButton dealId={deal.id} />}
       </div>
     </aside>
   );

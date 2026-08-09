@@ -71,3 +71,58 @@ export async function getCollection(collectionId: string): Promise<GravvTransact
   }
   return gravvGet(`/v1/collections/${collectionId}`);
 }
+
+/**
+ * Initiates escrow funding. Preview-then-confirm per Gravv's money-moving
+ * convention (see agent/tools/gravv_tools.py for the same pattern on the
+ * Python side, used by release/refund). Mock mode returns an instantly
+ * "completed" synthetic collection so the flow is demoable without a real
+ * Gravv escrow account.
+ */
+export async function createCollection(args: {
+  customerId: string;
+  amount: string;
+  currency: string;
+  clientReference: string;
+  metadata: Record<string, unknown>;
+}): Promise<GravvTransaction> {
+  if (GRAVV_MOCK_MODE) {
+    return { id: `mock_collection_${crypto.randomUUID()}`, status: "completed" };
+  }
+
+  const escrowAccountId = process.env.GRAVV_ESCROW_ACCOUNT_ID!;
+  const body = {
+    customer_id: args.customerId,
+    client_customer_id: args.customerId,
+    amount: args.amount,
+    currency: args.currency,
+    country: "US",
+    client_reference: args.clientReference,
+    metadata: args.metadata,
+    source: { source_type: "external", methods: ["card"] },
+    destination: { destination_type: "internal_account", id: escrowAccountId },
+  };
+
+  // Preview.
+  const previewRes = await fetch(`${BASE}/v1/collections`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify(body),
+  });
+  const preview = (await previewRes.json()) as { data: GravvTransaction; error: string | null };
+  if (!previewRes.ok || preview.error) {
+    throw new Error(`Gravv createCollection preview failed: ${preview.error ?? previewRes.status}`);
+  }
+
+  // Confirm.
+  const confirmRes = await fetch(`${BASE}/v1/collections`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ ...body, confirm: true }),
+  });
+  const confirmed = (await confirmRes.json()) as { data: GravvTransaction; error: string | null };
+  if (!confirmRes.ok || confirmed.error) {
+    throw new Error(`Gravv createCollection confirm failed: ${confirmed.error ?? confirmRes.status}`);
+  }
+  return confirmed.data;
+}
