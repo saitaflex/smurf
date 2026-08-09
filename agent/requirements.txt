@@ -1,6 +1,13 @@
+# Shared by everything that runs inside the Vercel Sandbox.
 google-adk
-playwright
-httpx
 supabase
 pydantic
 groq
+
+# Verifier sub-agents (task 3)
+playwright
+httpx
+Pillow
+
+# Dev / test only -- the sub-agent suite runs against local fixtures.
+pytest
