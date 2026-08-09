@@ -80,9 +80,15 @@ const { error: insErr } = await svc.from("checklist_items").insert([
 ]);
 if (insErr) { console.log("checklist insert failed:", insErr.message); process.exit(1); }
 
-// 3. Simulate the payments track: KYC + escrow funded (Gravv is track #1).
-await svc.from("deals").update({ project_status: "funded", payment_status: "locked" }).eq("id", dealId);
-console.log("simulated escrow: funded + locked");
+// 3. Client funds the escrow (GRAVV_SIMULATE rail: pending -> locked).
+r = await api(clientCookie, "POST", `/api/deals/${dealId}/fund`, {});
+log("fund", r);
+let dealF, tF = 0;
+do {
+  await new Promise((res) => setTimeout(res, 1000));
+  ({ data: dealF } = await svc.from("deals").select("project_status, payment_status").eq("id", dealId).single());
+} while (dealF.payment_status !== "locked" && ++tF < 15);
+console.log("escrow:", dealF.project_status, "/", dealF.payment_status);
 
 // 4. Freelancer delivers the app itself as the deliverable URL.
 r = await api(freelancerCookie, "POST", `/api/deals/${dealId}/deliver`, {
@@ -118,5 +124,11 @@ console.log("deal status after verification:", deal2.project_status);
 // 7. Client approves.
 r = await api(clientCookie, "POST", `/api/deals/${dealId}/approve`, {});
 log("approve", r);
-const { data: deal3 } = await svc.from("deals").select("project_status, payment_status").eq("id", dealId).single();
+
+// 8. Settlement: approve hands off to /release; simulated webhook settles it.
+let deal3, t3 = 0;
+do {
+  await new Promise((res) => setTimeout(res, 1000));
+  ({ data: deal3 } = await svc.from("deals").select("project_status, payment_status, gravv_release_transfer_id").eq("id", dealId).single());
+} while (deal3.payment_status !== "released" && ++t3 < 15);
 console.log("FINAL:", JSON.stringify(deal3));
