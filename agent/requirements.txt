@@ -3,3 +3,4 @@ playwright
 httpx
 supabase
 pydantic
+groq
